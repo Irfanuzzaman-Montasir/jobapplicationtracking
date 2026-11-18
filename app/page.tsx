@@ -271,6 +271,20 @@ export default function HomePage() {
     )
   }
 
+  // Not logged in: Full split-screen login page matching design
+  if (!currentUser) {
+    return (
+      <AuthForm
+        onSuccess={(user) => {
+          setLoading(true)
+          setCurrentUser(user)
+        }}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
+      />
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-200">
       {/* Header */}
@@ -292,27 +306,23 @@ export default function HomePage() {
             </div>
 
             <div className="flex items-center gap-2">
-              {currentUser && (
-                <>
-                  <button
-                    onClick={handleExport}
-                    disabled={filteredApplications.length === 0}
-                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    title="Export applications to CSV"
-                  >
-                    <Download className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                    <span>Export CSV</span>
-                  </button>
+              <button
+                onClick={handleExport}
+                disabled={filteredApplications.length === 0}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Export applications to CSV"
+              >
+                <Download className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                <span>Export CSV</span>
+              </button>
 
-                  <button
-                    onClick={handleAdd}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium rounded-lg shadow-sm transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Add Application</span>
-                  </button>
-                </>
-              )}
+              <button
+                onClick={handleAdd}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium rounded-lg shadow-sm transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Application</span>
+              </button>
 
               <button
                 onClick={toggleDarkMode}
@@ -323,34 +333,26 @@ export default function HomePage() {
                 {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
 
-              {currentUser && (
-                <div className="flex items-center pl-2 ml-1 border-l border-gray-200 dark:border-gray-800 gap-2">
-                  <div className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-2.5 py-1.5 rounded-lg">
-                    <User className="w-3.5 h-3.5 text-gray-400" />
-                    <span>@{currentUser.username}</span>
-                  </div>
-                  <button
-                    onClick={handleSignOut}
-                    className="p-2 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
-                    title="Sign Out"
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
+              <div className="flex items-center pl-2 ml-1 border-l border-gray-200 dark:border-gray-800 gap-2">
+                <div className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-2.5 py-1.5 rounded-lg">
+                  <User className="w-3.5 h-3.5 text-gray-400" />
+                  <span>@{currentUser.username}</span>
                 </div>
-              )}
+                <button
+                  onClick={handleSignOut}
+                  className="p-2 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content: If not logged in, show AuthForm */}
-      {!currentUser ? (
-        <AuthForm onSuccess={(user) => {
-          setLoading(true)
-          setCurrentUser(user)
-        }} />
-      ) : (
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
           {/* Notice for Supabase configuration */}
           {!isConfigured && showConfigNotice && (
             <div className="flex items-start justify-between gap-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl p-4 text-xs sm:text-sm text-amber-800 dark:text-amber-300">
@@ -534,7 +536,6 @@ export default function HomePage() {
             )}
           </section>
         </main>
-      )}
 
       {/* Add / Edit Modal */}
       {modalOpen && (
