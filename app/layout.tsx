@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'JobTrack — Personal Job Application Tracker',
+  title: 'JobTrack - Personal Job Application Tracker',
   description: 'A clean, minimal, personal job application tracker.',
 }
 

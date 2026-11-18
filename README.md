@@ -1,4 +1,4 @@
-# JobTrack — Personal Job Application Tracker
+# JobTrack - Personal Job Application Tracker
 
 A clean, minimal, responsive personal job application tracking web app built with Next.js, TypeScript, Tailwind CSS, and Supabase PostgreSQL with **Username & Password Authentication**.
 
