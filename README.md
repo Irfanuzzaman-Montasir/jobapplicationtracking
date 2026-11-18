@@ -1,12 +1,16 @@
 # JobTrack — Personal Job Application Tracker
 
-A clean, minimal, responsive personal job application tracking web app built with Next.js, TypeScript, Tailwind CSS, and Supabase PostgreSQL.
+A clean, minimal, responsive personal job application tracking web app built with Next.js, TypeScript, Tailwind CSS, and Supabase PostgreSQL with **Username & Password Authentication**.
 
 ---
 
 ## Features
 
-- **Dashboard Statistics**: Dynamic metrics computed directly from application data:
+- **Username & Password Authentication**:
+  - Pure username and password credentials (no email prompt, no email verification).
+  - Each user has their own private dashboard and application list.
+  - Row Level Security (RLS) ensures users can never see each other's data.
+- **Dashboard Statistics**: Dynamic metrics computed specifically from the authenticated user's data:
   - Total Applications
   - Responded
   - No Response
@@ -27,27 +31,23 @@ A clean, minimal, responsive personal job application tracking web app built wit
 
 ---
 
-## Tech Stack
+## Supabase PostgreSQL & Auth Setup
 
-- **Framework**: [Next.js](https://nextjs.org/) (App Router, Turbopack)
-- **Language**: [TypeScript](https://www.typescriptlang.org/)
-- **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
-- **Database**: [Supabase](https://supabase.com/) (PostgreSQL with Row-Level Security)
-- **Icons**: [Lucide React](https://lucide.dev/)
-- **Deployment**: Vercel ready
+### 1. Disable Email Confirmation in Supabase
+Since this uses username-only authentication:
+1. In your [Supabase Dashboard](https://supabase.com/dashboard), open your project.
+2. Go to **Authentication** > **Providers** > **Email**.
+3. Toggle **OFF** *"Confirm email"*.
+4. Click **Save**.
 
----
-
-## Supabase PostgreSQL Database Setup
-
-1. Go to [Supabase](https://supabase.com/) and create a new project.
-2. In the Supabase Dashboard, navigate to the **SQL Editor**.
-3. Open or copy the script from [`supabase/schema.sql`](supabase/schema.sql) and paste it into the SQL Editor:
+### 2. Run Database Schema
+1. In your Supabase Dashboard, open the **SQL Editor**.
+2. Copy and paste the script from [`supabase/schema.sql`](supabase/schema.sql) and click **Run**:
 
 ```sql
--- 1. Create the applications table
 create table if not exists public.applications (
   id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade default auth.uid(),
   company_name text not null,
   position text not null,
   application_date date not null,
@@ -59,101 +59,52 @@ create table if not exists public.applications (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 2. Create index on application_date
-create index if not exists idx_applications_date on public.applications (application_date desc);
+create index if not exists idx_applications_user_date on public.applications (user_id, application_date desc);
 
--- 3. Enable Row Level Security (RLS)
 alter table public.applications enable row level security;
 
--- 4. Create RLS Policies for personal usage
-create policy "Allow anonymous select on applications"
-  on public.applications for select using (true);
+create policy "Users can view own applications"
+  on public.applications for select using (auth.uid() = user_id);
 
-create policy "Allow anonymous insert on applications"
-  on public.applications for insert with check (true);
+create policy "Users can insert own applications"
+  on public.applications for insert with check (auth.uid() = user_id);
 
-create policy "Allow anonymous update on applications"
-  on public.applications for update using (true) with check (true);
+create policy "Users can update own applications"
+  on public.applications for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
-create policy "Allow anonymous delete on applications"
-  on public.applications for delete using (true);
+create policy "Users can delete own applications"
+  on public.applications for delete using (auth.uid() = user_id);
 ```
-
-4. Click **Run** to execute the query and set up your table with security policies.
 
 ---
 
 ## Environment Configuration
 
-1. In your Supabase Dashboard, go to **Project Settings** > **API**.
-2. Copy your **Project URL** and **anon/public API key**.
-3. Create a `.env.local` file in the project root (see `.env.example`):
+In your Supabase Dashboard, go to **Project Settings** > **API**. Copy your **Project URL** and **anon public key**.
+Create a `.env.local` file in the project root:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
-> **Note**: If credentials are not yet configured, JobTrack automatically runs in demo mode with sample data stored in browser storage so you can test all features immediately.
-
 ---
 
 ## Getting Started
 
 ### 1. Install Dependencies
-
 ```bash
 npm install
 ```
 
 ### 2. Run the Development Server
-
 ```bash
 npm run dev
 ```
-
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### 3. Build for Production
-
 ```bash
 npm run build
 npm run start
 ```
-
----
-
-## Project Structure
-
-```
-├── app/
-│   ├── globals.css          # Tailwind CSS styles & dark mode config
-│   ├── layout.tsx           # Root HTML layout with metadata
-│   └── page.tsx             # Single main page (Dashboard + Table + Controls)
-├── components/
-│   ├── ApplicationModal.tsx     # Add / Edit application form dialog
-│   ├── ApplicationTable.tsx     # Clean data table & mobile responsive cards
-│   ├── DeleteConfirmModal.tsx   # Deletion confirmation dialog
-│   ├── EmptyState.tsx           # Sensible zero-state and filter clear states
-│   └── StatCard.tsx             # Metric cards for horizontal dashboard row
-├── lib/
-│   ├── api.ts               # Supabase CRUD operations & fallback data layer
-│   └── supabase.ts          # Supabase client initialization & config check
-├── supabase/
-│   └── schema.sql           # PostgreSQL table definition, constraints & RLS
-├── types/
-│   └── index.ts             # TypeScript interfaces and union types
-├── .env.example             # Example environment variable template
-└── README.md
-```
-
----
-
-## Vercel Deployment
-
-1. Push your repository to GitHub.
-2. Import the repository in [Vercel](https://vercel.com).
-3. Add the two environment variables in Vercel project settings:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-4. Click **Deploy**.

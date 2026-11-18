@@ -4,6 +4,7 @@ export type ApplicationSource = 'website' | 'linkedin' | 'email'
 
 export interface Application {
   id: string
+  user_id?: string
   company_name: string
   position: string
   application_date: string
@@ -32,4 +33,9 @@ export interface FilterState {
   jobType: string
   source: string
   sortOrder: 'asc' | 'desc'
+}
+
+export interface UserProfile {
+  id: string
+  username: string
 }

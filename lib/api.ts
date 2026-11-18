@@ -1,99 +1,50 @@
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { Application, ApplicationFormData } from '@/types'
+import { getCurrentUser } from '@/lib/auth'
 
-const LOCAL_STORAGE_KEY = 'jobtrack_demo_applications'
+const LOCAL_STORAGE_KEY = 'jobtrack_demo_applications_v2'
 
-const initialMockApplications: Application[] = [
-  {
-    id: 'e4a053c8-1111-46bb-9f22-1d58231a4001',
-    company_name: 'Stripe',
-    position: 'Full Stack Engineer',
-    application_date: '2026-11-15',
-    response_received: true,
-    response_outcome: 'positive',
-    job_type: 'remote',
-    application_source: 'linkedin',
-    comments: 'Recruiter reached out for initial phone screen on Thursday.',
-    created_at: new Date('2026-11-15T10:00:00Z').toISOString(),
-  },
-  {
-    id: 'e4a053c8-2222-46bb-9f22-1d58231a4002',
-    company_name: 'Vercel',
-    position: 'Frontend Engineer',
-    application_date: '2026-11-12',
-    response_received: true,
-    response_outcome: 'positive',
-    job_type: 'remote',
-    application_source: 'website',
-    comments: 'Take-home assessment submitted.',
-    created_at: new Date('2026-11-12T14:30:00Z').toISOString(),
-  },
-  {
-    id: 'e4a053c8-3333-46bb-9f22-1d58231a4003',
-    company_name: 'Linear',
-    position: 'Product Engineer',
-    application_date: '2026-11-10',
-    response_received: false,
-    response_outcome: 'na',
-    job_type: 'remote',
-    application_source: 'website',
-    comments: 'Applied directly through careers page.',
-    created_at: new Date('2026-11-10T09:15:00Z').toISOString(),
-  },
-  {
-    id: 'e4a053c8-4444-46bb-9f22-1d58231a4004',
-    company_name: 'Datadog',
-    position: 'Software Engineer - Infrastructure',
-    application_date: '2026-11-05',
-    response_received: true,
-    response_outcome: 'negative',
-    job_type: 'hybrid',
-    application_source: 'email',
-    comments: 'Position was filled internally.',
-    created_at: new Date('2026-11-05T16:00:00Z').toISOString(),
-  },
-  {
-    id: 'e4a053c8-5555-46bb-9f22-1d58231a4005',
-    company_name: 'Figma',
-    position: 'Software Engineer',
-    application_date: '2026-11-02',
-    response_received: false,
-    response_outcome: 'na',
-    job_type: 'onsite',
-    application_source: 'linkedin',
-    comments: 'Referred by alumni contact.',
-    created_at: new Date('2026-11-02T11:45:00Z').toISOString(),
-  },
-]
-
-function getLocalApplications(): Application[] {
-  if (typeof window === 'undefined') return initialMockApplications
+function getLocalApplications(userId?: string): Application[] {
+  if (typeof window === 'undefined') return []
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY)
-    if (!raw) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(initialMockApplications))
-      return initialMockApplications
+    const all: Application[] = raw ? JSON.parse(raw) : []
+    if (userId) {
+      return all.filter((a) => a.user_id === userId)
     }
-    return JSON.parse(raw)
+    return all
   } catch {
-    return initialMockApplications
+    return []
   }
 }
 
-function saveLocalApplications(apps: Application[]): void {
+function saveLocalApplications(apps: Application[], userId?: string): void {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(apps))
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY)
+    let all: Application[] = raw ? JSON.parse(raw) : []
+    if (userId) {
+      // Keep other users' applications and update current user's applications
+      all = all.filter((a) => a.user_id !== userId).concat(apps)
+    } else {
+      all = apps
+    }
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(all))
   } catch (e) {
     console.error('Failed to save to localStorage:', e)
   }
 }
 
 export async function getApplications(): Promise<Application[]> {
+  const user = await getCurrentUser()
+  if (!user) return []
+
   if (!isSupabaseConfigured()) {
-    return getLocalApplications()
+    const apps = getLocalApplications(user.id)
+    return apps.sort((a, b) => new Date(b.application_date).getTime() - new Date(a.application_date).getTime())
   }
 
+  // With Supabase RLS, select('*') automatically filters by auth.uid() = user_id
   const { data, error } = await supabase
     .from('applications')
     .select('*')
@@ -107,9 +58,13 @@ export async function getApplications(): Promise<Application[]> {
 }
 
 export async function createApplication(formData: ApplicationFormData): Promise<Application> {
+  const user = await getCurrentUser()
+  if (!user) throw new Error('You must be signed in to create an application')
+
   if (!isSupabaseConfigured()) {
     const newApp: Application = {
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `app_${Date.now()}`,
+      user_id: user.id,
       company_name: formData.company_name,
       position: formData.position,
       application_date: formData.application_date,
@@ -120,12 +75,13 @@ export async function createApplication(formData: ApplicationFormData): Promise<
       comments: formData.comments ? formData.comments : null,
       created_at: new Date().toISOString(),
     }
-    const current = getLocalApplications()
-    saveLocalApplications([newApp, ...current])
+    const current = getLocalApplications(user.id)
+    saveLocalApplications([newApp, ...current], user.id)
     return newApp
   }
 
   const payload = {
+    user_id: user.id,
     company_name: formData.company_name,
     position: formData.position,
     application_date: formData.application_date,
@@ -153,8 +109,11 @@ export async function updateApplication(
   id: string,
   formData: ApplicationFormData
 ): Promise<Application> {
+  const user = await getCurrentUser()
+  if (!user) throw new Error('You must be signed in to update an application')
+
   if (!isSupabaseConfigured()) {
-    const current = getLocalApplications()
+    const current = getLocalApplications(user.id)
     const index = current.findIndex((a) => a.id === id)
     if (index === -1) throw new Error('Application not found')
 
@@ -171,7 +130,7 @@ export async function updateApplication(
     }
 
     current[index] = updatedApp
-    saveLocalApplications([...current])
+    saveLocalApplications([...current], user.id)
     return updatedApp
   }
 
@@ -201,10 +160,13 @@ export async function updateApplication(
 }
 
 export async function deleteApplication(id: string): Promise<void> {
+  const user = await getCurrentUser()
+  if (!user) throw new Error('You must be signed in to delete an application')
+
   if (!isSupabaseConfigured()) {
-    const current = getLocalApplications()
+    const current = getLocalApplications(user.id)
     const filtered = current.filter((a) => a.id !== id)
-    saveLocalApplications(filtered)
+    saveLocalApplications(filtered, user.id)
     return
   }
 

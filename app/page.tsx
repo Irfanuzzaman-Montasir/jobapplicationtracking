@@ -1,24 +1,28 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, Moon, Sun, Download, Search, ChevronUp, ChevronDown, Filter, X, Info } from 'lucide-react'
-import { Application, ApplicationFormData, FilterState } from '@/types'
+import { Plus, Moon, Sun, Download, Search, ChevronUp, ChevronDown, Filter, X, Info, LogOut, User } from 'lucide-react'
+import { Application, ApplicationFormData, FilterState, UserProfile } from '@/types'
 import { getApplications, createApplication, updateApplication, deleteApplication } from '@/lib/api'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { getCurrentUser, signOutUser } from '@/lib/auth'
 import StatCard from '@/components/StatCard'
 import ApplicationTable from '@/components/ApplicationTable'
 import ApplicationModal from '@/components/ApplicationModal'
 import DeleteConfirmModal from '@/components/DeleteConfirmModal'
 import EmptyState from '@/components/EmptyState'
+import AuthForm from '@/components/AuthForm'
 
 export default function HomePage() {
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
+  const [authChecked, setAuthChecked] = useState(false)
+
   const [applications, setApplications] = useState<Application[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [darkMode, setDarkMode] = useState(false)
   const [showConfigNotice, setShowConfigNotice] = useState(true)
 
-  // Purely computed config status
   const isConfigured = isSupabaseConfigured()
 
   // Modal state
@@ -63,8 +67,32 @@ export default function HomePage() {
     }
   }
 
-  // Fetch data
+  // Check current session
   useEffect(() => {
+    let ignore = false
+    getCurrentUser()
+      .then((user) => {
+        if (!ignore) {
+          setCurrentUser(user)
+          setAuthChecked(true)
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setCurrentUser(null)
+          setAuthChecked(true)
+        }
+      })
+
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  // Fetch applications when user changes
+  useEffect(() => {
+    if (!currentUser) return
+
     let ignore = false
     getApplications()
       .then((data) => {
@@ -76,7 +104,7 @@ export default function HomePage() {
       .catch((err: unknown) => {
         if (!ignore) {
           const msg = err instanceof Error ? err.message : 'Failed to load applications'
-          setError(`${msg}. Please check your Supabase credentials or database setup.`)
+          setError(`${msg}. Please check your database setup.`)
           setLoading(false)
         }
       })
@@ -84,7 +112,13 @@ export default function HomePage() {
     return () => {
       ignore = true
     }
-  }, [])
+  }, [currentUser])
+
+  const handleSignOut = async () => {
+    await signOutUser()
+    setCurrentUser(null)
+    setApplications([])
+  }
 
   // Stats
   const stats = useMemo(() => {
@@ -225,6 +259,18 @@ export default function HomePage() {
     setFilters({ search: '', response: 'all', jobType: 'all', source: 'all', sortOrder: filters.sortOrder })
   }
 
+  // Initial Auth Loading Screen
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs text-gray-500 dark:text-gray-400">Loading JobTrack...</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-200">
       {/* Header */}
@@ -246,15 +292,27 @@ export default function HomePage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleExport}
-                disabled={filteredApplications.length === 0}
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Export applications to CSV"
-              >
-                <Download className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                <span>Export CSV</span>
-              </button>
+              {currentUser && (
+                <>
+                  <button
+                    onClick={handleExport}
+                    disabled={filteredApplications.length === 0}
+                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Export applications to CSV"
+                  >
+                    <Download className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    <span>Export CSV</span>
+                  </button>
+
+                  <button
+                    onClick={handleAdd}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium rounded-lg shadow-sm transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add Application</span>
+                  </button>
+                </>
+              )}
 
               <button
                 onClick={toggleDarkMode}
@@ -265,202 +323,218 @@ export default function HomePage() {
                 {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
 
-              <button
-                onClick={handleAdd}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium rounded-lg shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Application</span>
-              </button>
+              {currentUser && (
+                <div className="flex items-center pl-2 ml-1 border-l border-gray-200 dark:border-gray-800 gap-2">
+                  <div className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-2.5 py-1.5 rounded-lg">
+                    <User className="w-3.5 h-3.5 text-gray-400" />
+                    <span>@{currentUser.username}</span>
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    className="p-2 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
+                    title="Sign Out"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* Notice for Supabase configuration */}
-        {!isConfigured && showConfigNotice && (
-          <div className="flex items-start justify-between gap-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl p-4 text-xs sm:text-sm text-amber-800 dark:text-amber-300">
-            <div className="flex items-start gap-2.5">
-              <Info className="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-              <div>
-                <p className="font-semibold">Supabase is not configured yet</p>
-                <p className="mt-0.5 text-amber-700 dark:text-amber-400">
-                  Running in local demo mode with sample data. All CRUD features, sorting, filtering, and CSV export work. To connect with Supabase PostgreSQL, add your credentials to <code className="bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 rounded font-mono">.env.local</code>.
-                </p>
+      {/* Main Content: If not logged in, show AuthForm */}
+      {!currentUser ? (
+        <AuthForm onSuccess={(user) => {
+          setLoading(true)
+          setCurrentUser(user)
+        }} />
+      ) : (
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+          {/* Notice for Supabase configuration */}
+          {!isConfigured && showConfigNotice && (
+            <div className="flex items-start justify-between gap-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl p-4 text-xs sm:text-sm text-amber-800 dark:text-amber-300">
+              <div className="flex items-start gap-2.5">
+                <Info className="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Supabase is not configured yet</p>
+                  <p className="mt-0.5 text-amber-700 dark:text-amber-400">
+                    Running in local demo mode with local session support. To connect to Supabase PostgreSQL, add your credentials in <code className="bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 rounded font-mono">.env.local</code>.
+                  </p>
+                </div>
               </div>
+              <button
+                onClick={() => setShowConfigNotice(false)}
+                className="text-amber-500 hover:text-amber-700 dark:hover:text-amber-200 p-1 rounded"
+                title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              onClick={() => setShowConfigNotice(false)}
-              className="text-amber-500 hover:text-amber-700 dark:hover:text-amber-200 p-1 rounded"
-              title="Dismiss"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+          )}
 
-        {/* Error Banner */}
-        {error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 text-red-700 dark:text-red-400 text-sm">
-            {error}
-          </div>
-        )}
+          {/* Error Banner */}
+          {error && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 text-red-700 dark:text-red-400 text-sm">
+              {error}
+            </div>
+          )}
 
-        {/* Section 1: Dashboard - 4 statistic cards in ONE horizontal row */}
-        <section aria-label="Dashboard Statistics">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard
-              label="Total Applications"
-              value={stats.total}
-              loading={loading}
-              color="blue"
-            />
-            <StatCard
-              label="Responded"
-              value={stats.responded}
-              loading={loading}
-              color="green"
-            />
-            <StatCard
-              label="No Response"
-              value={stats.noResponse}
-              loading={loading}
-              color="yellow"
-            />
-            <StatCard
-              label="Positive Responses"
-              value={stats.positive}
-              loading={loading}
-              color="purple"
-            />
-          </div>
-        </section>
+          {/* Section 1: Dashboard - 4 statistic cards in ONE horizontal row */}
+          <section aria-label="Dashboard Statistics">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatCard
+                label="Total Applications"
+                value={stats.total}
+                loading={loading}
+                color="blue"
+              />
+              <StatCard
+                label="Responded"
+                value={stats.responded}
+                loading={loading}
+                color="green"
+              />
+              <StatCard
+                label="No Response"
+                value={stats.noResponse}
+                loading={loading}
+                color="yellow"
+              />
+              <StatCard
+                label="Positive Responses"
+                value={stats.positive}
+                loading={loading}
+                color="purple"
+              />
+            </div>
+          </section>
 
-        {/* Section 2: Application Table with Search & Filters */}
-        <section aria-label="Applications Management" className="space-y-4">
-          {/* Filter Bar */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm">
-            <div className="flex flex-col md:flex-row gap-3">
-              {/* Search */}
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search by company name or position..."
-                  value={filters.search}
-                  onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-colors"
-                />
-              </div>
-
-              {/* Filters */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="hidden sm:flex items-center text-gray-400 text-xs gap-1 mr-1">
-                  <Filter className="w-3.5 h-3.5" />
-                  <span>Filters:</span>
+          {/* Section 2: Application Table with Search & Filters */}
+          <section aria-label="Applications Management" className="space-y-4">
+            {/* Filter Bar */}
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm">
+              <div className="flex flex-col md:flex-row gap-3">
+                {/* Search */}
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by company name or position..."
+                    value={filters.search}
+                    onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-colors"
+                  />
                 </div>
 
-                <select
-                  value={filters.response}
-                  onChange={(e) => setFilters((f) => ({ ...f, response: e.target.value }))}
-                  className="text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-colors"
-                >
-                  <option value="all">All Responses</option>
-                  <option value="yes">Responded</option>
-                  <option value="no">No Response</option>
-                </select>
+                {/* Filters */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="hidden sm:flex items-center text-gray-400 text-xs gap-1 mr-1">
+                    <Filter className="w-3.5 h-3.5" />
+                    <span>Filters:</span>
+                  </div>
 
-                <select
-                  value={filters.jobType}
-                  onChange={(e) => setFilters((f) => ({ ...f, jobType: e.target.value }))}
-                  className="text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-colors"
-                >
-                  <option value="all">All Job Types</option>
-                  <option value="remote">Remote</option>
-                  <option value="hybrid">Hybrid</option>
-                  <option value="onsite">On-site</option>
-                </select>
-
-                <select
-                  value={filters.source}
-                  onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value }))}
-                  className="text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-colors"
-                >
-                  <option value="all">All Sources</option>
-                  <option value="website">Website</option>
-                  <option value="linkedin">LinkedIn</option>
-                  <option value="email">Email</option>
-                </select>
-
-                {hasActiveFilters && (
-                  <button
-                    onClick={clearFilters}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 px-2 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-                    title="Clear all filters"
+                  <select
+                    value={filters.response}
+                    onChange={(e) => setFilters((f) => ({ ...f, response: e.target.value }))}
+                    className="text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-colors"
                   >
-                    <X className="w-3.5 h-3.5" />
-                    Reset
-                  </button>
-                )}
+                    <option value="all">All Responses</option>
+                    <option value="yes">Responded</option>
+                    <option value="no">No Response</option>
+                  </select>
 
-                <button
-                  onClick={toggleSort}
-                  className="inline-flex items-center gap-1 text-sm text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-white px-2.5 py-2 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  title="Sort by applied date"
-                >
-                  <span>Date</span>
-                  {filters.sortOrder === 'asc' ? (
-                    <ChevronUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <select
+                    value={filters.jobType}
+                    onChange={(e) => setFilters((f) => ({ ...f, jobType: e.target.value }))}
+                    className="text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-colors"
+                  >
+                    <option value="all">All Job Types</option>
+                    <option value="remote">Remote</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="onsite">On-site</option>
+                  </select>
+
+                  <select
+                    value={filters.source}
+                    onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value }))}
+                    className="text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-colors"
+                  >
+                    <option value="all">All Sources</option>
+                    <option value="website">Website</option>
+                    <option value="linkedin">LinkedIn</option>
+                    <option value="email">Email</option>
+                  </select>
+
+                  {hasActiveFilters && (
+                    <button
+                      onClick={clearFilters}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 px-2 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                      title="Clear all filters"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      Reset
+                    </button>
                   )}
-                </button>
+
+                  <button
+                    onClick={toggleSort}
+                    className="inline-flex items-center gap-1 text-sm text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-white px-2.5 py-2 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    title="Sort by applied date"
+                  >
+                    <span>Date</span>
+                    {filters.sortOrder === 'asc' ? (
+                      <ChevronUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    )}
+                  </button>
+                </div>
               </div>
+
+              {/* Sub-bar showing count & mobile CSV button */}
+              {!loading && (
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                  <span>
+                    Showing {filteredApplications.length} of {applications.length} applications
+                    {hasActiveFilters ? ' (filtered)' : ''}
+                  </span>
+                  <button
+                    onClick={handleExport}
+                    disabled={filteredApplications.length === 0}
+                    className="sm:hidden inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 disabled:opacity-40"
+                  >
+                    <Download className="w-3 h-3" />
+                    Export
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Sub-bar showing count & mobile CSV button */}
-            {!loading && (
-              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                <span>
-                  Showing {filteredApplications.length} of {applications.length} applications
-                  {hasActiveFilters ? ' (filtered)' : ''}
-                </span>
-                <button
-                  onClick={handleExport}
-                  disabled={filteredApplications.length === 0}
-                  className="sm:hidden inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 disabled:opacity-40"
-                >
-                  <Download className="w-3 h-3" />
-                  Export
-                </button>
+            {/* Table Container */}
+            {loading ? (
+              <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-16 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm text-gray-500 dark:text-gray-400">Loading your applications...</span>
+                </div>
               </div>
+            ) : filteredApplications.length === 0 ? (
+              <EmptyState
+                hasFilters={hasActiveFilters}
+                onAdd={handleAdd}
+                onClear={clearFilters}
+              />
+            ) : (
+              <ApplicationTable
+                applications={filteredApplications}
+                onEdit={handleEdit}
+                onDelete={handleDeleteRequest}
+              />
             )}
-          </div>
-
-          {/* Table Container */}
-          {loading ? (
-            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-16 flex items-center justify-center">
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm text-gray-500 dark:text-gray-400">Loading applications...</span>
-              </div>
-            </div>
-          ) : filteredApplications.length === 0 ? (
-            <EmptyState
-              hasFilters={hasActiveFilters}
-              onAdd={handleAdd}
-              onClear={clearFilters}
-            />
-          ) : (
-            <ApplicationTable
-              applications={filteredApplications}
-              onEdit={handleEdit}
-              onDelete={handleDeleteRequest}
-            />
-          )}
-        </section>
-      </main>
+          </section>
+        </main>
+      )}
 
       {/* Add / Edit Modal */}
       {modalOpen && (
